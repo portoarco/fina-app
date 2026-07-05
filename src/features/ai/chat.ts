@@ -133,6 +133,12 @@ export async function* handleChatStreaming(
       },
       // tambahkan systemInstruction untuk prompter instruksi yang diberikan ke AI untuk merespons user
       systemInstruction: `Kamu adalah seorang senior financial advisor yang akan menjawab pertanyaan user`,
+      // sampling params
+      temperature: 0.2,
+      topK: 5,
+      topP: 0.1,
+      // output control
+      maxOutputTokens: 100,
     },
   });
   if (isThinking) {
