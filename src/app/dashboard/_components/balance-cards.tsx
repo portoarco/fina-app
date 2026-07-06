@@ -6,16 +6,18 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { getBalanceSummary } from "@/features/transaction/action";
 import { convertToIDR } from "@/lib/utils";
-import { useQuery } from "@tanstack/react-query";
 import { TrendingDownIcon, TrendingUpIcon, WalletIcon } from "lucide-react";
 
-const BalanceCards = () => {
-  const { data, error } = useQuery({
-    queryKey: ["balance"],
-    queryFn: () => getBalanceSummary(),
-  });
+const BalanceCards = ({
+  data,
+  error,
+}: {
+  data:
+    | { savings: number; totalIncome: number; totalExpense: number }
+    | undefined;
+  error: unknown;
+}) => {
   if (error) {
     return (
       <div className="w-full p-4 text-sm border rounded-lg border-destructive/50 text-destructive bg-destructive/10 ">
@@ -31,7 +33,7 @@ const BalanceCards = () => {
             <WalletIcon className="size-4" />
             <span>Savings</span>
           </CardTitle>
-          <CardDescription className="text-2xl font-semibold text-secondary-foreground">
+          <CardDescription className="text-lg lg:text-2xl font-semibold text-secondary-foreground">
             {convertToIDR(Number(data?.savings) || 0)}
           </CardDescription>
         </CardHeader>
@@ -44,7 +46,7 @@ const BalanceCards = () => {
             <TrendingUpIcon className="size-4 " />
             <span>Total Income</span>
           </CardTitle>
-          <CardDescription className="text-2xl font-semibold text-secondary-foreground">
+          <CardDescription className="text-lg lg:text-2xl font-semibold text-secondary-foreground">
             {convertToIDR(Number(data?.totalIncome) || 0)}
           </CardDescription>
         </CardHeader>
@@ -57,7 +59,7 @@ const BalanceCards = () => {
             <TrendingDownIcon className="size-4 " />
             <span>Total Expenses</span>
           </CardTitle>
-          <CardDescription className="text-2xl font-semibold text-secondary-foreground">
+          <CardDescription className="text-lg lg:text-2xl font-semibold text-secondary-foreground">
             {convertToIDR(Number(data?.totalExpense) || 0)}
           </CardDescription>
         </CardHeader>
