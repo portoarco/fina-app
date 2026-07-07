@@ -118,7 +118,11 @@ const ChatbotDrawer = () => {
           ...prev,
           { role: "model", parts: [{ thought: true, text: "" }, { text: "" }] },
         ]);
-        const response = await handleChatStreaming(conversation, isThinking);
+        const response = await handleChatStreaming(
+          conversation,
+          isThinking,
+          "personalized",
+        );
         for await (const chunk of response) {
           setConversation((prev) => {
             const newConversation = [...prev];
@@ -150,7 +154,11 @@ const ChatbotDrawer = () => {
           { role: "model", parts: [{ text: "" }] },
         ]);
         // panggil response
-        const response = await handleChatStreaming(conversation, isThinking);
+        const response = await handleChatStreaming(
+          conversation,
+          isThinking,
+          "personalized",
+        );
         // panggil satu satu dengan looping
         for await (const chunk of response) {
           setConversation((prev) => {

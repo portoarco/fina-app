@@ -3,18 +3,24 @@
 import { Conversation } from "@/app/types/ai";
 import z from "zod";
 import { createAI } from "./instance";
+import { createClient } from "@/lib/supabase/server";
+import { generateEmbedding } from "./embedding";
+import { Transaction } from "@/app/types/transaction";
 
 // define dulu ai nya
 // const ai = new GoogleGenAI({ apiKey: ENV.googleGenAIKey });
 // api key ambil dari google ai studio
 const ai = createAI();
 
+// ===== LIST MODEL ====
 // model: "gemini-2.5-flash",
 // model: "gemini-3-flash-preview",
 // model: "gemini-3.1-flash-lite",
 // model: "gemini-3.1-flash-live-preview",
 // model: "gemini-3.5-flash",
 const usedModels = "gemini-3.1-flash-lite";
+// -----------------------------------------
+
 // contoh fungsi statis
 // export async function handleChat() {
 //   //   contoh dengan generate content
@@ -35,13 +41,9 @@ export async function handleChat(
   isThinking: boolean,
 ) {
   // untuk generateContent itu hanya untuk teks yang 1 kali bikin aja
-  // model: "gemini-3-flash-preview" : model awal,
+
   const response = await ai.models.generateContent({
-    // model: "gemini-2.5-flash",
-    // model: "gemini-3-flash-preview",
     model: usedModels,
-    // model: "gemini-3.1-flash-live-preview",
-    // model: "gemini-3.5-flash",
     contents: [...conversation],
     config: {
       thinkingConfig: {
@@ -83,59 +85,11 @@ export async function handleChat(
   return result;
 }
 
-// THINKING MODE
-// export async function handleChatWithThinking(message: string) {
-//   const response = await ai.models.generateContent({
-//     model: "gemini-3.5-flash",
-//     contents: message,
-//     config: {
-//       thinkingConfig: {
-//         // thinkingBudget untuk pengaturan budget, tiap model beda, cek dokumentasi
-//         // thinkingBudget: 0, //tanpa thinking sama sekali
-//         // thinkingLevel: ThinkingLevel.MINIMAL,
-//         // untuk jenis thinking level bisa cek dokumentasi google gemini
-//         includeThoughts: true,
-//         // includeThoughts untuk buat ringkasan pemikiran, cara jalan pikiran
-//       },
-//     },
-//   });
-//   //   cara untuk tampilkan alur pemikiran
-//   const parts = response.candidates?.[0]?.content?.parts;
-//   if (!parts) {
-//     return;
-//   }
-//   const result = {
-//     thoughts: "",
-//     answer: "",
-//   };
-//   for (const part of parts) {
-//     if (!part.text) {
-//       continue;
-//     } else if (part.thought) {
-//       result.thoughts += part.text;
-//     } else {
-//       result.answer += part.text;
-//     }
-//   }
-
-//   return result;
-// }
-
-// STREAMING RESPONSE
-export async function* handleChatStreaming(
-  // message: string,
-  conversation: Conversation[],
-  isThinking: boolean,
-) {
-  // tanda bintang * pada function itu adalah ciri dari generator function
+// function untuk general dan personalized chat streaming
+async function generalChat(conversation: Conversation[], isThinking: boolean) {
   const response = await ai.models.generateContentStream({
     // generate content stream biasanya dipakai kalo mau ada ui dimana harus nunggu dulu atau generate satu per satu seperti chat
-    // model: "gemini-2.5-flash",
-    // model: "gemini-3-flash-preview",
     model: usedModels,
-    // model: "gemini-3.1-flash-live-preview",
-    // model: "gemini-3.5-flash",
-
     // contents: message,
     contents: [...conversation],
     config: {
@@ -212,6 +166,142 @@ export async function* handleChatStreaming(
       // frequencyPenalty: 1.5,
     },
   });
+  return response;
+}
+
+async function personalizedChat(
+  query: string,
+  historyChat?: Conversation[],
+  isThinking?: boolean,
+) {
+  const supabase = await createClient();
+  // embedding query yang diinput user dan dicocokkan / match dengan data di vector db
+  const queryEmbedding = await generateEmbedding(query);
+  // match_transactions = fungsi untuk matching
+  const { data, error } = await supabase.rpc("match_transactions", {
+    // key harus sama (sebelah kiri) dengan data dalam database, dan value sama dengan data const di atas
+    query_embedding: queryEmbedding,
+    // match threshold rangenya dari 0-1
+    match_threshold: 0.3,
+    // match_count  = jumlah yang mungkin jadi limit untuk chunk
+    match_count: 15,
+  });
+  if (error) {
+    throw new Error("Failed to perform vector search");
+  }
+  let contextData = "";
+  if (!data || data.length === 0) {
+    contextData =
+      "No transactions found that are similar or relevant to the questions";
+  } else {
+    contextData = data
+      .map((transaction: Transaction) => {
+        return JSON.stringify(transaction);
+      })
+      .join("\n");
+  }
+  // setelah data dapat, maka generate content dengan AI
+  const prompt = `
+  <role>
+    You are an AI Financial Analyst. You are helping the user analyze their financial data using the RAG (Retrieval-Augmented-Generation) Technique. 
+  </role>
+  
+  <input>
+    User Question: "${query}"
+  </input>
+
+  <context>
+    Relevant transaction data from the database (ordered from the most relevant): ${contextData}
+  </context>
+
+  <instructions>
+    - Answer the user question ONLY based on the relevant transaction data above. 
+    - If there are calculations (total spending, average, etc), calculate them accurately baed on data
+    - Provide the answer in a neat, professional, yet easy-to-understand markdown format. 
+    - If there is irrelevant data at all, state that the data is not available in the data's history. 
+    - If user question is general and not need a data, response generally 
+  </instructions>
+
+  <constraints>
+    - Don't answer in table format instead of markdown,
+  </constraints 
+  `;
+  const response = await ai.models.generateContentStream({
+    model: usedModels,
+    contents: [
+      ...(historyChat ?? []),
+      {
+        role: "user",
+        parts: [{ text: prompt }],
+      },
+    ],
+    config: {
+      thinkingConfig: {
+        includeThoughts: isThinking,
+      },
+      systemInstruction: prompt,
+    },
+  });
+  return response;
+}
+
+// THINKING MODE
+// export async function handleChatWithThinking(message: string) {
+//   const response = await ai.models.generateContent({
+//     model: "gemini-3.5-flash",
+//     contents: message,
+//     config: {
+//       thinkingConfig: {
+//         // thinkingBudget untuk pengaturan budget, tiap model beda, cek dokumentasi
+//         // thinkingBudget: 0, //tanpa thinking sama sekali
+//         // thinkingLevel: ThinkingLevel.MINIMAL,
+//         // untuk jenis thinking level bisa cek dokumentasi google gemini
+//         includeThoughts: true,
+//         // includeThoughts untuk buat ringkasan pemikiran, cara jalan pikiran
+//       },
+//     },
+//   });
+//   //   cara untuk tampilkan alur pemikiran
+//   const parts = response.candidates?.[0]?.content?.parts;
+//   if (!parts) {
+//     return;
+//   }
+//   const result = {
+//     thoughts: "",
+//     answer: "",
+//   };
+//   for (const part of parts) {
+//     if (!part.text) {
+//       continue;
+//     } else if (part.thought) {
+//       result.thoughts += part.text;
+//     } else {
+//       result.answer += part.text;
+//     }
+//   }
+
+//   return result;
+// }
+
+// STREAMING RESPONSE
+// PERSONALIZED STREAMING CHAT - RAG IMPLEMENTATION
+// retrieve embedding  = ngambil embedding
+export async function* handleChatStreaming(
+  conversation: Conversation[],
+  isThinking: boolean,
+  mode: "general" | "personalized",
+) {
+  console.log(conversation);
+  let response;
+  if (mode === "general") {
+    response = await generalChat(conversation, isThinking);
+  } else {
+    response = await personalizedChat(
+      conversation[conversation.length - 1].parts[0].text,
+      conversation.slice(0, -1),
+      isThinking,
+    );
+  }
   if (isThinking) {
     for await (const chunk of response) {
       // pecah part dan cek satu satu
