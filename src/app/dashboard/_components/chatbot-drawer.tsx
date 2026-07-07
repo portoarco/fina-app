@@ -25,83 +25,12 @@ import ChatbotTextarea from "./chatbot-textarea";
 import { Conversation } from "@/app/types/ai";
 
 const ChatbotDrawer = () => {
-  // conversation standard untuk chat gemini
-  //   const [conversation, setConversation] = useState<
-  //     {
-  //       role: string;
-  //       parts: {
-  //         text: string;
-  //       }[];
-  //     }[]
-  //   >([
-  //     {
-  //       role: "user",
-  //       parts: [
-  //         {
-  //           text: "Hello test nama saya test testing",
-  //         },
-  //       ],
-  //     },
-  //     {
-  //       role: "model",
-  //       parts: [
-  //         {
-  //           text: "Hello, how can i help you?",
-  //         },
-  //       ],
-  //     },
-  //   ]);
   const chatRef = useRef<HTMLDivElement>(null);
-  //   WITHOUT THINKING STATE
-
   //   WITH THINKING STATE AND MULTI TURN CONVERSATION (CEK HISTORY PERCAKAPAN)
   const [conversation, setConversation] = useState<Conversation[]>([]);
-
   const [isThinking, setIsThinking] = useState<boolean>(false);
+  const [mode, setMode] = useState<"general" | "personalized">("general");
 
-  // mutation for normal response
-  // const { mutate: handleChatMutation, isPending } = useMutation({
-  //   // mutationFn: handleChat,
-  //   mutationFn: ({
-
-  //     isThinking,
-  //   }: {
-
-  //     isThinking: boolean;
-  //   }) => handleChat(conversation, isThinking),
-  //   onSuccess: (response) => {
-  //     // tanpa thinking
-  //     // const botMessage = {
-  //     //   role: "model",
-  //     //   parts: [{ text: response?.answer || "Terjadi kesalahan" }],
-  //     // };
-
-  //     // Kalau pakai thinking:
-  //     let parts: {
-  //       text: string;
-  //       thought?: boolean;
-  //     }[] = [];
-  //     if (response?.thoughts !== "") {
-  //       parts = [
-  //         ...parts,
-  //         { thought: true, text: response?.thoughts || "Terjadi kesalahan" },
-  //       ];
-  //     }
-  //     const botMessage = {
-  //       role: "model",
-  //       parts: [...parts, { text: response?.answer || "Terjadi kesalahan" }],
-  //     };
-
-  //     setConversation((prev) => [...prev, botMessage]);
-  //   },
-  //   onError: (error) => {
-  //     const botMessage = {
-  //       role: "model",
-  //       parts: [{ text: "Terjadi kesalahan: " + error.message }],
-  //     };
-  //     setConversation((prev) => [...prev, botMessage]);
-  //   },
-  // });
   // mutation untuk generate streaming
   const { mutate: handleChatMutation, isPending } = useMutation({
     // mutationFn: handleChat,
@@ -121,7 +50,7 @@ const ChatbotDrawer = () => {
         const response = await handleChatStreaming(
           conversation,
           isThinking,
-          "personalized",
+          mode,
         );
         for await (const chunk of response) {
           setConversation((prev) => {
@@ -157,7 +86,7 @@ const ChatbotDrawer = () => {
         const response = await handleChatStreaming(
           conversation,
           isThinking,
-          "personalized",
+          mode,
         );
         // panggil satu satu dengan looping
         for await (const chunk of response) {
@@ -177,25 +106,6 @@ const ChatbotDrawer = () => {
         return response;
       }
     },
-    // !!!! ON SUCCESS GA PERLU DIAKTIFKAN KARENA SEBELUMNYA UDAH DIHANDLE DI MUTATIONFN NYA
-    // onSuccess: (response) => {
-    //   let parts: {
-    //     text: string;
-    //     thought?: boolean;
-    //   }[] = [];
-    //   if (response?.thoughts !== "") {
-    //     parts = [
-    //       ...parts,
-    //       { thought: true, text: response?.thoughts || "Terjadi kesalahan" },
-    //     ];
-    //   }
-    //   const botMessage = {
-    //     role: "model",
-    //     parts: [...parts, { text: response?.answer || "Terjadi kesalahan" }],
-    //   };
-
-    //   setConversation((prev) => [...prev, botMessage]);
-    // },
     // !!!!!!!!!! ERROR BELUM KEHANDLE, SEHINGGA PERLU
     onError: (error) => {
       const botMessage = {
@@ -205,32 +115,6 @@ const ChatbotDrawer = () => {
       setConversation((prev) => [...prev, botMessage]);
     },
   });
-
-  // mutation function for handle thinking
-  // const {
-  //   mutate: handleChatWithThinkingMutation,
-  //   isPending: isPendingChatWithThinking,
-  // } = useMutation({
-  //   mutationFn: handleChatWithThinking,
-  //   onSuccess: (response) => {
-  //     const botMessage = {
-  //       role: "model",
-  //       parts: [
-  //         { thought: true, text: response?.thoughts || "Terjadi kesalahan" },
-  //         { text: response?.answer || "Terjadi kesalahan" },
-  //       ],
-  //     };
-  //     setConversation((prev) => [...prev, botMessage]);
-  //   },
-  //   onError: (error) => {
-  //     const botMessage = {
-  //       role: "model",
-  //       parts: [{ text: "Terjadi kesalahan: " + error.message }],
-  //     };
-  //     setConversation((prev) => [...prev, botMessage]);
-  //   },
-  // });
-
   function sendMessage(message: string) {
     const newMessage = {
       role: "user",
@@ -358,6 +242,8 @@ const ChatbotDrawer = () => {
             isThinking={isThinking}
             setIsThinking={setIsThinking}
             sendMessage={sendMessage}
+            mode={mode}
+            setMode={setMode}
           />
         </DrawerFooter>
       </DrawerContent>

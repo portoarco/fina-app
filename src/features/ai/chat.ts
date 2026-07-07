@@ -13,12 +13,12 @@ import { Transaction } from "@/app/types/transaction";
 const ai = createAI();
 
 // ===== LIST MODEL ====
-// model: "gemini-2.5-flash",
-// model: "gemini-3-flash-preview",
-// model: "gemini-3.1-flash-lite",
-// model: "gemini-3.1-flash-live-preview",
-// model: "gemini-3.5-flash",
-const usedModels = "gemini-3.1-flash-lite";
+// const usedModels= "gemini-2.5-flash",
+// const usedModels= "gemini-3-flash-preview",
+// const usedModels= "gemini-3.1-flash-lite",
+// const usedModels= "gemini-3.1-flash-live-preview",
+const usedModels = "gemini-3.5-flash";
+// const usedModels = "gemini-3.1-flash-lite";
 // -----------------------------------------
 
 // contoh fungsi statis
