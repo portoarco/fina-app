@@ -14,11 +14,11 @@ const ai = createAI();
 
 // ===== LIST MODEL ====
 // const usedModels= "gemini-2.5-flash",
-// const usedModels= "gemini-3-flash-preview",
+const usedModels = "gemini-3-flash-preview";
 // const usedModels= "gemini-3.1-flash-lite",
 // const usedModels= "gemini-3.1-flash-live-preview",
-const usedModels = "gemini-3.5-flash";
 // const usedModels = "gemini-3.1-flash-lite";
+// const usedModels = "gemini-3.5-flash";
 // -----------------------------------------
 
 // contoh fungsi statis
