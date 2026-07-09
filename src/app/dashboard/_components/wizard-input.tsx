@@ -33,8 +33,9 @@ const WizardInput = ({ refetch }: { refetch: () => void }) => {
     // --- CARA FUNCTION CALLING - AI DECIDE FUNC AUTOMATICALLY ---
     // mutationFn: handleWizardInput,
     mutationFn: handleWizardTools,
-    onSuccess: () => {
-      toast.success("Transaction created successfully");
+    onSuccess: (response) => {
+      // toast.success("Transaction created successfully");
+      toast.success(response);
       form.reset();
       refetch();
     },

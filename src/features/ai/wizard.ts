@@ -3,7 +3,12 @@ import z from "zod";
 import { createAI } from "./instance";
 import { usedModels } from "@/lib/utils";
 import { FunctionDeclaration, Type } from "@google/genai";
-import { createTransaction } from "../transaction/action";
+import {
+  createTransaction,
+  deleteTransaction,
+  updateTransaction,
+} from "../transaction/action";
+import { findEmbedding } from "./embedding";
 
 //CARA OTOMASI RESPONS AI SAAT CRUD VIA CHATBOT
 const ai = createAI();
@@ -79,9 +84,48 @@ export async function handleWizardInput(message: string) {
   if (transaction.amount <= 0) {
     throw new Error("Cannot create transaction with invalid amount");
   }
+  await createTransaction(transaction);
 
-  return transaction;
+  // return transaction;
+  return "Create transaction success";
 }
+
+const transactionProperties = {
+  id: {
+    type: Type.STRING,
+    description: "The unique identifier of the transaction",
+  },
+  amount: {
+    type: Type.NUMBER,
+    description: "The amount of the transaction",
+  },
+  description: {
+    type: Type.STRING,
+    description:
+      "A brief description of the transaction. first letter must be capitalized",
+  },
+  type: {
+    type: Type.STRING,
+    enum: ["income", "expense"],
+    description: "Type of the transactions, either 'income' or 'expense'",
+  },
+  category: {
+    type: Type.STRING,
+    enum: [
+      "Education",
+      "Food & Drink",
+      "Transportation",
+      "Entertainment",
+      "Salary",
+      "Others",
+    ],
+    description: "Category of the transaction",
+  },
+  date: {
+    type: Type.STRING,
+    description: 'Date of the transaction in format "YYYY-MM-DD"',
+  },
+};
 
 const createTransactionDeclaration: FunctionDeclaration = {
   name: "create_transaction", //format boleh snake_case atau camelCase
@@ -90,40 +134,30 @@ const createTransactionDeclaration: FunctionDeclaration = {
   // description tugasnya supaya model bisa tahu kapan fungsi ini dipanggil
   parameters: {
     type: Type.OBJECT,
-    properties: {
-      amount: {
-        type: Type.NUMBER,
-        description: "The amount of the transaction",
-      },
-      description: {
-        type: Type.STRING,
-        description: "A brief description of the transaction",
-      },
-      type: {
-        type: Type.STRING,
-        enum: ["income", "expense"],
-        description: "Type of the transactions, either 'income' or 'expense'",
-      },
-      category: {
-        type: Type.STRING,
-        enum: [
-          "Education",
-          "Food & Drink",
-          "Transportation",
-          "Entertainment",
-          "Salary",
-          "Others",
-        ],
-        description: "Category of the transaction",
-      },
-      date: {
-        type: Type.STRING,
-        description: 'Date of the transaction in format "YYYY-MM-DD"',
-      },
-    }, // properties samakan dengan schema
-    required: ["amount", "description", "type", "category", "date"],
+    properties: transactionProperties, // properties samakan dengan schema
+    required: ["amount", "description", "type", "category", "date"], //utk id pada create tidak wajib
   },
   //   parameters berupa json object schema
+};
+
+const deleteTransactionDeclaration: FunctionDeclaration = {
+  name: "delete_transaction",
+  description:
+    "Delete an existing transaction from user's financial history based on the provided data",
+  parameters: {
+    type: Type.OBJECT,
+    properties: transactionProperties,
+  },
+};
+
+const updateTransactionDeclaration: FunctionDeclaration = {
+  name: "update_transaction",
+  description:
+    "Update an existing transactions from user's financial history based on the provided data",
+  parameters: {
+    type: Type.OBJECT,
+    properties: transactionProperties,
+  },
 };
 
 // Note: Tiap fungsi yang didaftarkan di handleWizardTools harus ada, bila user memanggil tidak spesifik, maka dianggap unknown function call atau error
@@ -152,29 +186,76 @@ export async function handleWizardTools(message: string) {
     config: {
       tools: [
         {
-          functionDeclarations: [createTransactionDeclaration], //kalau ada fungsi2 lainnya, masukkan ke dalam arraynya
+          functionDeclarations: [
+            createTransactionDeclaration,
+            deleteTransactionDeclaration,
+            updateTransactionDeclaration,
+          ], //kalau ada fungsi2 lainnya, masukkan ke dalam arraynya
         },
       ],
     },
   });
   if (response.functionCalls && response.functionCalls.length > 0) {
-    const functionCall = response.functionCalls[0];
-    switch (functionCall.name) {
-      case "create_transaction":
+    // const functionCall = response.functionCalls[0];
+    // const functionCall = response.functionCalls;
+    // console.log(functionCall);
+
+    // Supaya bisa terima lebih dari 1 data, maka perlu di mapping dengan cara berikut:
+    await Promise.all(
+      response.functionCalls.map(async (functionCall) => {
         const args = functionCall.args;
         if (!args) {
-          throw new Error("No arguments provided for create transaction");
+          throw new Error("No arguments provided for action");
         }
-        // cekdulu schemanya dan parsing data
-        const transaction = transactionSchema.parse(args);
-        if (transaction.amount <= 0) {
-          throw new Error("Cannot create transaction with invalid amount");
+        switch (functionCall.name) {
+          case "create_transaction":
+            // cekdulu schemanya dan parsing data
+            const transaction = transactionSchema.parse(args);
+            if (transaction.amount <= 0) {
+              throw new Error("Cannot create transaction with invalid amount");
+            }
+            await createTransaction(transaction);
+            break;
+          case "delete_transaction":
+            // karena AI bisa halusinasi misal tidak ada transaksi malah ngebuat transaksi sendiri, maka perlu untuk dibuatkan vector search
+            // PENCARIAN VEKTOR
+            const dataFindForDelete = await findEmbedding(
+              JSON.stringify(args),
+              0.95,
+              1,
+            );
+            // args di stringify dulu diubah bentuk embedding
+            const deletedData = dataFindForDelete[0];
+
+            if (!deletedData) {
+              throw new Error("Data Not Found");
+            }
+            await deleteTransaction(deletedData.id);
+            // pada bagian delete data ini benar-benar harus di cek dari match_threshold, match_count supaya data yang didelete itu sesuai, otak atik untuk params di functionnya itu
+            break;
+          case "update_transaction":
+            const dataFindForUpdate = await findEmbedding(
+              JSON.stringify(args),
+              0.3,
+              1,
+            );
+            const updateData = dataFindForUpdate[0];
+            if (!updateData) {
+              throw new Error("Data Not Found");
+            }
+            const newData = transactionSchema.parse(args);
+            console.log(newData);
+            if (newData.amount <= 0) {
+              throw new Error("Cannot update transaction with invalid amount");
+            }
+            await updateTransaction(updateData.id, newData);
+            break;
+          default:
+            throw new Error("Unknown function call");
         }
-        await createTransaction(transaction);
-        break;
-      default:
-        throw new Error("Unknown function call");
-    }
+      }),
+    );
+    return "Function executed successfully";
   } else {
     throw new Error("AI did not call any function");
   }

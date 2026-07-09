@@ -4,7 +4,7 @@ import { Conversation } from "@/app/types/ai";
 
 import { createAI } from "./instance";
 import { createClient } from "@/lib/supabase/server";
-import { generateEmbedding } from "./embedding";
+import { findEmbedding, generateEmbedding } from "./embedding";
 import { Transaction } from "@/app/types/transaction";
 import { usedModels } from "@/lib/utils";
 
@@ -166,21 +166,7 @@ async function personalizedChat(
   historyChat?: Conversation[],
   isThinking?: boolean,
 ) {
-  const supabase = await createClient();
-  // embedding query yang diinput user dan dicocokkan / match dengan data di vector db
-  const queryEmbedding = await generateEmbedding(query);
-  // match_transactions = fungsi untuk matching
-  const { data, error } = await supabase.rpc("match_transactions", {
-    // key harus sama (sebelah kiri) dengan data dalam database, dan value sama dengan data const di atas
-    query_embedding: queryEmbedding,
-    // match threshold rangenya dari 0-1
-    match_threshold: 0.3,
-    // match_count  = jumlah yang mungkin jadi limit untuk chunk
-    match_count: 15,
-  });
-  if (error) {
-    throw new Error("Failed to perform vector search");
-  }
+  const data = await findEmbedding(query);
   let contextData = "";
   if (!data || data.length === 0) {
     contextData =
@@ -283,7 +269,6 @@ export async function* handleChatStreaming(
   isThinking: boolean,
   mode: "general" | "personalized",
 ) {
-  console.log(conversation);
   let response;
   if (mode === "general") {
     response = await generalChat(conversation, isThinking);
