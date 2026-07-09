@@ -2,9 +2,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Field } from "@/components/ui/field";
-import { handleWizardInput } from "@/features/ai/chat";
-import { generateEmbedding } from "@/features/ai/embedding";
-import { createTransaction } from "@/features/transaction/action";
+import { handleWizardTools } from "@/features/ai/wizard";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
 import { Loader2Icon, SendIcon, SparkleIcon } from "lucide-react";
@@ -25,12 +23,16 @@ const WizardInput = ({ refetch }: { refetch: () => void }) => {
   });
   // wizard input mutation
   const { mutate, isPending } = useMutation({
+    // ----- CARA SETELAH WIZARD INPUT
+    // mutationFn: async (message: string) => {
+    //   const aiResponse = await handleWizardInput(message);
+    //   if (!aiResponse) throw new Error("Failed to process AI Input");
+    //   return createTransaction(aiResponse);
+    // },
+    // -----
+    // --- CARA FUNCTION CALLING - AI DECIDE FUNC AUTOMATICALLY ---
     // mutationFn: handleWizardInput,
-    mutationFn: async (message: string) => {
-      const aiResponse = await handleWizardInput(message);
-      if (!aiResponse) throw new Error("Failed to process AI Input");
-      return createTransaction(aiResponse);
-    },
+    mutationFn: handleWizardTools,
     onSuccess: () => {
       toast.success("Transaction created successfully");
       form.reset();
@@ -38,7 +40,9 @@ const WizardInput = ({ refetch }: { refetch: () => void }) => {
     },
     onError: (error) => {
       console.error(error);
-      toast.error(`Something went wrong,${error}`);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to process request",
+      );
     },
   });
   const onSubmit = (data: z.infer<typeof formSchema>) => {

@@ -1,25 +1,17 @@
 "use server";
 
 import { Conversation } from "@/app/types/ai";
-import z from "zod";
+
 import { createAI } from "./instance";
 import { createClient } from "@/lib/supabase/server";
 import { generateEmbedding } from "./embedding";
 import { Transaction } from "@/app/types/transaction";
+import { usedModels } from "@/lib/utils";
 
 // define dulu ai nya
 // const ai = new GoogleGenAI({ apiKey: ENV.googleGenAIKey });
 // api key ambil dari google ai studio
 const ai = createAI();
-
-// ===== LIST MODEL ====
-// const usedModels= "gemini-2.5-flash",
-const usedModels = "gemini-3-flash-preview";
-// const usedModels= "gemini-3.1-flash-lite",
-// const usedModels= "gemini-3.1-flash-live-preview",
-// const usedModels = "gemini-3.1-flash-lite";
-// const usedModels = "gemini-3.5-flash";
-// -----------------------------------------
 
 // contoh fungsi statis
 // export async function handleChat() {
@@ -331,80 +323,80 @@ export async function* handleChatStreaming(
   }
 }
 
-//CARA OTOMASI RESPONS AI SAAT CRUD VIA CHATBOT
+// //CARA OTOMASI RESPONS AI SAAT CRUD VIA CHATBOT
 
-// buat dulu schema untuk validasi hasil AI nya
-const transactionSchema = z.object({
-  amount: z.number().default(0).describe("Transaction nominal"),
-  // describe untuk mendeskripsikan amount itu buat apa
-  type: z
-    .enum(["income", "expense"], {
-      error: "Type is required",
-    })
-    .describe("Type of transaction"),
-  category: z
-    .enum([
-      "Education",
-      "Food & Drink",
-      "Transportation",
-      "Entertainment",
-      "Salary",
-      "Others",
-    ])
-    .describe("Category of transaction"),
-  // describe boleh pakai bahasa indonesia atau inggris menyesuaikan kebutuhan
-  date: z.string().describe("the date of transaction in YYYY-MM-DD format"),
-  description: z.string().describe("Short text for describing transaction"),
-});
-export async function handleWizardInput(message: string) {
-  const contents = `${message}`;
-  const response = await ai.models.generateContent({
-    model: usedModels,
-    // kalau mau modifikasi inputan user, maka pakai modifikasi contentsnya juga, berikut ini adalah contoh yang pakai XML karena lebih baik karena AI lebih tau
-    // lebih baik define untuk instruksi pakai bahasa inggris, karena kalau pakai indonesia token lebih gede karena harus translate dulu
-    // boleh di system instruction boleh di contents, contents ini ga ngemodifikasi conversation
-    contents: `
-    <role>
-      You are an AI Wizard finance assistant, who can extract transaction details from text.
-    </role>
+// // buat dulu schema untuk validasi hasil AI nya
+// const transactionSchema = z.object({
+//   amount: z.number().default(0).describe("Transaction nominal"),
+//   // describe untuk mendeskripsikan amount itu buat apa
+//   type: z
+//     .enum(["income", "expense"], {
+//       error: "Type is required",
+//     })
+//     .describe("Type of transaction"),
+//   category: z
+//     .enum([
+//       "Education",
+//       "Food & Drink",
+//       "Transportation",
+//       "Entertainment",
+//       "Salary",
+//       "Others",
+//     ])
+//     .describe("Category of transaction"),
+//   // describe boleh pakai bahasa indonesia atau inggris menyesuaikan kebutuhan
+//   date: z.string().describe("the date of transaction in YYYY-MM-DD format"),
+//   description: z.string().describe("Short text for describing transaction"),
+// });
+// export async function handleWizardInput(message: string) {
+//   const contents = `${message}`;
+//   const response = await ai.models.generateContent({
+//     model: usedModels,
+//     // kalau mau modifikasi inputan user, maka pakai modifikasi contentsnya juga, berikut ini adalah contoh yang pakai XML karena lebih baik karena AI lebih tau
+//     // lebih baik define untuk instruksi pakai bahasa inggris, karena kalau pakai indonesia token lebih gede karena harus translate dulu
+//     // boleh di system instruction boleh di contents, contents ini ga ngemodifikasi conversation
+//     contents: `
+//     <role>
+//       You are an AI Wizard finance assistant, who can extract transaction details from text.
+//     </role>
 
-    <instruction>
-      Extract the transaction details from the following text and return it as a structured JSON object.
-      The JSON object must have exactly these fields:
-      - "amount": a number representing the cost  (positive). Use 0 if the amount is not provided
-      - "type" : type of transaction, either 'income' or 'expense'. 
-      - "category": choose the most appropriate category from this exact list: 
-            "Education", "Food & Drink", "Transportation", "Entertainment", "Salary", "Others",
-      - "description": a short string describing the transaction, first letter must be capitalized. 
-      - "date": date of transaction in YYYY-MM-DD format. 
-        Assume the current date if relative terms like 'today' or 'just now'. If the date is not define, use current date
-    </instruction>
+//     <instruction>
+//       Extract the transaction details from the following text and return it as a structured JSON object.
+//       The JSON object must have exactly these fields:
+//       - "amount": a number representing the cost  (positive). Use 0 if the amount is not provided
+//       - "type" : type of transaction, either 'income' or 'expense'.
+//       - "category": choose the most appropriate category from this exact list:
+//             "Education", "Food & Drink", "Transportation", "Entertainment", "Salary", "Others",
+//       - "description": a short string describing the transaction, first letter must be capitalized.
+//       - "date": date of transaction in YYYY-MM-DD format.
+//         Assume the current date if relative terms like 'today' or 'just now'. If the date is not define, use current date
+//     </instruction>
 
-    <context>
-      Current Date : ${new Date().toISOString()}
-    </context>
+//     <context>
+//       Current Date : ${new Date().toISOString()}
+//     </context>
 
-    <input>
-      Text to extract: ${contents} 
-    </input>
+//     <input>
+//       Text to extract: ${contents}
+//     </input>
 
-    <outputFormat>
-      Respond with only the raw JSON object, NO MARKDOWN BLOCKS, NO TEXT BEFORE OR AFTER
-    </outputFormat>
-    `,
-    config: {
-      // tipe yang dihasilkan itu berupa json
-      responseMimeType: "application/json",
-      // memasukkan transactionschema ke responseSchema dengan z.toJSONSchema (merubah zod schema ke json)
-      responseSchema: z.toJSONSchema(transactionSchema),
-    },
-  });
+//     <outputFormat>
+//       Respond with only the raw JSON object, NO MARKDOWN BLOCKS, NO TEXT BEFORE OR AFTER
+//     </outputFormat>
+//     `,
+//     config: {
+//       // tipe yang dihasilkan itu berupa json
+//       responseMimeType: "application/json",
+//       // memasukkan transactionschema ke responseSchema dengan z.toJSONSchema (merubah zod schema ke json)
+//       responseSchema: z.toJSONSchema(transactionSchema),
+//     },
+//   });
 
-  const transaction = transactionSchema.parse(JSON.parse(`${response.text}`));
+//   const transaction = transactionSchema.parse(JSON.parse(`${response.text}`));
 
-  if (transaction.amount <= 0) {
-    throw new Error("Cannot create transaction with invalid amount");
-  }
+//   if (transaction.amount <= 0) {
+//     throw new Error("Cannot create transaction with invalid amount");
+//   }
 
-  return transaction;
-}
+//   return transaction;
+// }
