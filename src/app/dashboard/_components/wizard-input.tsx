@@ -8,6 +8,7 @@ import { useMutation } from "@tanstack/react-query";
 import { Loader2Icon, SendIcon, SparkleIcon } from "lucide-react";
 import { KeyboardEvent } from "react";
 import { Controller, useForm } from "react-hook-form";
+import Markdown from "react-markdown";
 import { toast } from "sonner";
 import z from "zod";
 const formSchema = z.object({
@@ -35,7 +36,11 @@ const WizardInput = ({ refetch }: { refetch: () => void }) => {
     mutationFn: handleWizardTools,
     onSuccess: (response) => {
       // toast.success("Transaction created successfully");
-      toast.success(response);
+      toast.success(
+        <div className="response-ai w-full!">
+          <Markdown>{response}</Markdown>
+        </div>,
+      );
       form.reset();
       refetch();
     },

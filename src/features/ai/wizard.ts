@@ -1,14 +1,20 @@
 "use server";
-import z from "zod";
-import { createAI } from "./instance";
 import { usedModels } from "@/lib/utils";
-import { FunctionDeclaration, Type } from "@google/genai";
+import z from "zod";
 import {
   createTransaction,
   deleteTransaction,
   updateTransaction,
 } from "../transaction/action";
 import { findEmbedding } from "./embedding";
+import {
+  createTransactionDeclaration,
+  deleteTransactionDeclaration,
+  getTransactionDeclaration,
+  updateTransactionDeclaration,
+} from "./functionTransaction";
+import { createAI } from "./instance";
+import { Content } from "@google/genai";
 
 //CARA OTOMASI RESPONS AI SAAT CRUD VIA CHATBOT
 const ai = createAI();
@@ -90,85 +96,23 @@ export async function handleWizardInput(message: string) {
   return "Create transaction success";
 }
 
-const transactionProperties = {
-  id: {
-    type: Type.STRING,
-    description: "The unique identifier of the transaction",
-  },
-  amount: {
-    type: Type.NUMBER,
-    description: "The amount of the transaction",
-  },
-  description: {
-    type: Type.STRING,
-    description:
-      "A brief description of the transaction. first letter must be capitalized",
-  },
-  type: {
-    type: Type.STRING,
-    enum: ["income", "expense"],
-    description: "Type of the transactions, either 'income' or 'expense'",
-  },
-  category: {
-    type: Type.STRING,
-    enum: [
-      "Education",
-      "Food & Drink",
-      "Transportation",
-      "Entertainment",
-      "Salary",
-      "Others",
-    ],
-    description: "Category of the transaction",
-  },
-  date: {
-    type: Type.STRING,
-    description: 'Date of the transaction in format "YYYY-MM-DD"',
-  },
-};
-
-const createTransactionDeclaration: FunctionDeclaration = {
-  name: "create_transaction", //format boleh snake_case atau camelCase
-  description:
-    "Create a new transaction in the user's financial history based on the provided details",
-  // description tugasnya supaya model bisa tahu kapan fungsi ini dipanggil
-  parameters: {
-    type: Type.OBJECT,
-    properties: transactionProperties, // properties samakan dengan schema
-    required: ["amount", "description", "type", "category", "date"], //utk id pada create tidak wajib
-  },
-  //   parameters berupa json object schema
-};
-
-const deleteTransactionDeclaration: FunctionDeclaration = {
-  name: "delete_transaction",
-  description:
-    "Delete an existing transaction from user's financial history based on the provided data",
-  parameters: {
-    type: Type.OBJECT,
-    properties: transactionProperties,
-  },
-};
-
-const updateTransactionDeclaration: FunctionDeclaration = {
-  name: "update_transaction",
-  description:
-    "Update an existing transactions from user's financial history based on the provided data",
-  parameters: {
-    type: Type.OBJECT,
-    properties: transactionProperties,
-  },
-};
-
 // Note: Tiap fungsi yang didaftarkan di handleWizardTools harus ada, bila user memanggil tidak spesifik, maka dianggap unknown function call atau error
 export async function handleWizardTools(message: string) {
-  const contents = `
+  const contents: Content[] = [
+    {
+      role: "user",
+      parts: [
+        {
+          text: `
     <role>
       You are an AI Wizard finance assistant, who can extract transaction details from text.
     </role>
 
     <instruction>
-      Extract the transaction details from the following text.
+      - Extract the transaction details from the following text. 
+      - If request is to update or delete transaction, you must call function get_transaction first to find out which transaction will be updated or deleted.
+      - When update transaction, args must return from get_transaction before with fully like in schema.
+      - The final response if there are no more functions being called is as simple as possible .
     </instruction>
 
     <context>
@@ -178,85 +122,131 @@ export async function handleWizardTools(message: string) {
     <input>
       Text to extract: ${message} 
     </input>
-    `;
-
-  const response = await ai.models.generateContent({
-    model: usedModels,
-    contents,
-    config: {
-      tools: [
-        {
-          functionDeclarations: [
-            createTransactionDeclaration,
-            deleteTransactionDeclaration,
-            updateTransactionDeclaration,
-          ], //kalau ada fungsi2 lainnya, masukkan ke dalam arraynya
+    `,
         },
       ],
     },
-  });
-  if (response.functionCalls && response.functionCalls.length > 0) {
-    // const functionCall = response.functionCalls[0];
-    // const functionCall = response.functionCalls;
-    // console.log(functionCall);
+  ];
+  let iterate = 1;
+  let running = true; //nilai awal iterasi masih running dan call ai berkali-kali sampai tugasnya selesai
+  // selama runing maka jalankan :
 
-    // Supaya bisa terima lebih dari 1 data, maka perlu di mapping dengan cara berikut:
-    await Promise.all(
-      response.functionCalls.map(async (functionCall) => {
-        const args = functionCall.args;
-        if (!args) {
-          throw new Error("No arguments provided for action");
-        }
-        switch (functionCall.name) {
-          case "create_transaction":
-            // cekdulu schemanya dan parsing data
-            const transaction = transactionSchema.parse(args);
-            if (transaction.amount <= 0) {
-              throw new Error("Cannot create transaction with invalid amount");
-            }
-            await createTransaction(transaction);
-            break;
-          case "delete_transaction":
-            // karena AI bisa halusinasi misal tidak ada transaksi malah ngebuat transaksi sendiri, maka perlu untuk dibuatkan vector search
-            // PENCARIAN VEKTOR
-            const dataFindForDelete = await findEmbedding(
-              JSON.stringify(args),
-              0.95,
-              1,
-            );
-            // args di stringify dulu diubah bentuk embedding
-            const deletedData = dataFindForDelete[0];
+  while (running) {
+    console.log(`iterate: ${iterate}`);
+    console.log(contents);
+    iterate++;
+    const response = await ai.models.generateContent({
+      model: usedModels,
+      contents,
+      config: {
+        tools: [
+          {
+            functionDeclarations: [
+              getTransactionDeclaration,
+              createTransactionDeclaration,
+              deleteTransactionDeclaration,
+              updateTransactionDeclaration,
+            ], //kalau ada fungsi2 lainnya, masukkan ke dalam arraynya
+          },
+        ],
+      },
+    });
+    if (response.functionCalls && response.functionCalls.length > 0) {
+      // const functionCall = response.functionCalls[0];
+      // const functionCall = response.functionCalls;
+      // console.log(functionCall);
 
-            if (!deletedData) {
-              throw new Error("Data Not Found");
-            }
-            await deleteTransaction(deletedData.id);
-            // pada bagian delete data ini benar-benar harus di cek dari match_threshold, match_count supaya data yang didelete itu sesuai, otak atik untuk params di functionnya itu
-            break;
-          case "update_transaction":
-            const dataFindForUpdate = await findEmbedding(
-              JSON.stringify(args),
-              0.3,
-              1,
-            );
-            const updateData = dataFindForUpdate[0];
-            if (!updateData) {
-              throw new Error("Data Not Found");
-            }
-            const newData = transactionSchema.parse(args);
-            console.log(newData);
-            if (newData.amount <= 0) {
-              throw new Error("Cannot update transaction with invalid amount");
-            }
-            await updateTransaction(updateData.id, newData);
-            break;
-          default:
-            throw new Error("Unknown function call");
-        }
-      }),
-    );
-    return "Function executed successfully";
-  } else {
-    throw new Error("AI did not call any function");
+      // Supaya bisa terima lebih dari 1 data, maka perlu di mapping dengan cara berikut:
+      console.log(response.functionCalls);
+
+      if (response.candidates && response.candidates[0]?.content) {
+        contents.push(response.candidates[0].content);
+      }
+
+      const functionResponseParts = await Promise.all(
+        response.functionCalls.map(async (functionCall) => {
+          const { name, args, id } = functionCall;
+          if (!args) {
+            throw new Error("No arguments provided for action");
+          }
+          let resultData = {};
+          switch (name) {
+            case "get_transaction":
+              const dataFind = await findEmbedding(
+                JSON.stringify(args),
+                0.3,
+                1,
+              );
+              resultData = dataFind[0] || {};
+              break;
+            case "create_transaction":
+              // cekdulu schemanya dan parsing data
+              const transaction = transactionSchema.parse(args);
+              if (transaction.amount <= 0) {
+                throw new Error(
+                  "Cannot create transaction with invalid amount",
+                );
+              }
+              await createTransaction(transaction);
+              break;
+            case "delete_transaction":
+              // // karena AI bisa halusinasi misal tidak ada transaksi malah ngebuat transaksi sendiri, maka perlu untuk dibuatkan vector search
+              // // PENCARIAN VEKTOR
+              // const dataFindForDelete = await findEmbedding(
+              //   JSON.stringify(args),
+              //   0.95,
+              //   1,
+              // );
+              // // args di stringify dulu diubah bentuk embedding
+              // const deletedData = dataFindForDelete[0];
+
+              // if (!deletedData) {
+              //   throw new Error("Data Not Found");
+              // }
+              // await deleteTransaction(deletedData.id);
+              // // pada bagian delete data ini benar-benar harus di cek dari match_threshold, match_count supaya data yang didelete itu sesuai, otak atik untuk params di functionnya itu
+              // break;
+              await deleteTransaction(`${args.id}`);
+              break;
+            case "update_transaction":
+              // const dataFindForUpdate = await findEmbedding(
+              //   JSON.stringify(args),
+              //   0.3,
+              //   1,
+              // );
+              // const updateData = dataFindForUpdate[0];
+              // if (!updateData) {
+              //   throw new Error("Data Not Found");
+              // }
+              // Cek Schema newData
+              const newData = transactionSchema.parse(args);
+              if (newData.amount <= 0) {
+                throw new Error(
+                  "Cannot update transaction with invalid amount",
+                );
+              }
+              await updateTransaction(`${args.id}`, newData);
+              break;
+            default:
+              throw new Error("Unknown function call");
+          }
+          return {
+            functionResponse: {
+              name,
+              response: { result: resultData },
+              id,
+            },
+          };
+        }),
+      );
+
+      contents.push({
+        role: "user",
+        parts: functionResponseParts,
+      });
+    } else {
+      running = false;
+      return response.text;
+    }
   }
 }

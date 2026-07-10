@@ -2,11 +2,10 @@
 
 import { Conversation } from "@/app/types/ai";
 
-import { createAI } from "./instance";
-import { createClient } from "@/lib/supabase/server";
-import { findEmbedding, generateEmbedding } from "./embedding";
 import { Transaction } from "@/app/types/transaction";
 import { usedModels } from "@/lib/utils";
+import { findEmbedding } from "./embedding";
+import { createAI } from "./instance";
 
 // define dulu ai nya
 // const ai = new GoogleGenAI({ apiKey: ENV.googleGenAIKey });
