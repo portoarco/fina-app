@@ -2,9 +2,10 @@
 
 import { Conversation } from "@/app/types/ai";
 
-import { Transaction } from "@/app/types/transaction";
 import { usedModels } from "@/lib/utils";
+import { Content, FunctionCall, Part } from "@google/genai";
 import { findEmbedding } from "./embedding";
+import { getTransactionDeclaration } from "./functionTransaction";
 import { createAI } from "./instance";
 
 // define dulu ai nya
@@ -77,7 +78,7 @@ export async function handleChat(
 }
 
 // function untuk general dan personalized chat streaming
-async function generalChat(conversation: Conversation[], isThinking: boolean) {
+async function generalChat(conversation: Content[], isThinking: boolean) {
   const response = await ai.models.generateContentStream({
     // generate content stream biasanya dipakai kalo mau ada ui dimana harus nunggu dulu atau generate satu per satu seperti chat
     model: usedModels,
@@ -99,6 +100,7 @@ async function generalChat(conversation: Conversation[], isThinking: boolean) {
 
       [Instructions]
       - Jawab semua pertanyaan yang sesuai dengan bidang finance 
+      - Kalau user tanya terkait pengeluaran atau pendapatan atau data yang terkait analisis miliknya, arahkan untuk memilih opsi "Personal" pada pilihan opsi AI
 
       [Input]
       Pengguna akan menanyakan seputar menabung, investasi, pengelolaan utang, dan darurat atau pertanyaan lain seputar finance
@@ -160,227 +162,162 @@ async function generalChat(conversation: Conversation[], isThinking: boolean) {
   return response;
 }
 
-async function personalizedChat(
-  query: string,
-  historyChat?: Conversation[],
-  isThinking?: boolean,
+// async function* personalizedChat(
+//   query: string,
+//   historyChat?: Content[],
+//   isThinking?: boolean,
+// ) {}
+
+// PERSONALIZED STREAMING CHAT - RAG IMPLEMENTATION
+// retrieve embedding  = ngambil embedding
+export async function* handleChatStreaming(
+  conversation: Content[],
+  isThinking: boolean,
+  mode: "general" | "personalized",
 ) {
-  const data = await findEmbedding(query);
-  let contextData = "";
-  if (!data || data.length === 0) {
-    contextData =
-      "No transactions found that are similar or relevant to the questions";
+  if (mode === "general") {
+    const response = await generalChat(conversation, isThinking);
+    if (isThinking) {
+      for await (const chunk of response) {
+        const parts = chunk.candidates?.[0]?.content?.parts;
+        if (parts) {
+          for (const part of parts) {
+            if (!part.text) {
+              continue;
+            } else if (part.thought) {
+              yield `[thought]${part.text}`;
+            } else {
+              yield part.text;
+            }
+          }
+        }
+      }
+    } else {
+      for await (const chunk of response) {
+        if (chunk.text) {
+          yield chunk.text;
+        }
+      }
+    }
   } else {
-    contextData = data
-      .map((transaction: Transaction) => {
-        return JSON.stringify(transaction);
-      })
-      .join("\n");
-  }
-  // setelah data dapat, maka generate content dengan AI
-  const prompt = `
+    const query = conversation[conversation.length - 1]?.parts?.[0]?.text;
+    const historyChat = conversation.slice(0, -1);
+
+    let contents: Content[] = [
+      ...historyChat,
+      {
+        role: "user",
+        parts: [
+          {
+            text: `
   <role>
-    You are an AI Financial Analyst. You are helping the user analyze their financial data using the RAG (Retrieval-Augmented-Generation) Technique. 
+    You are an AI Financial Analyst. You are helping the user analyze their financial data. 
   </role>
   
   <input>
     User Question: "${query}"
   </input>
 
-  <context>
-    Relevant transaction data from the database (ordered from the most relevant): ${contextData}
-  </context>
-
   <instructions>
-    - Answer the user question ONLY based on the relevant transaction data above. 
-    - If there are calculations (total spending, average, etc), calculate them accurately baed on data
+  - Extract the transaction details from user input.
+    - Answer the user question ONLY based on the relevant transaction data (if there's need data).
+    - If there are calculations (total spending, average, etc), calculate them accurately based on data
     - Provide the answer in a neat, professional, yet easy-to-understand markdown format. 
     - If there is irrelevant data at all, state that the data is not available in the data's history. 
-    - If user question is general and not need a data, response generally 
+    - If user question is general and not need a data, response generally.
+    - The final response if there are no more functions being called is as simple as possible 
   </instructions>
 
+  <context>
+    Current Date : ${new Date().toISOString()}
+  </context>
+
   <constraints>
+    - Answer in relaxed, polite but professional in Bahasa Indonesia.
+    - Don't make any assumptions about user's data if they don't mention it.
+    - If there are questions outside the context related to finance (creating code/programming stuffs, private relationships, love matters, non-finance psychology, answering school quizz, etc), DON'T ANSWER! You must only answer questions related to finance. 
     - Don't answer in table format instead of markdown,
-  </constraints 
-  `;
-  const response = await ai.models.generateContentStream({
-    model: usedModels,
-    contents: [
-      ...(historyChat ?? []),
-      {
-        role: "user",
-        parts: [{ text: prompt }],
+  </constraints> 
+  `,
+          },
+        ],
       },
-    ],
-    config: {
-      thinkingConfig: {
-        includeThoughts: isThinking,
-      },
-      systemInstruction: prompt,
-    },
-  });
-  return response;
-}
+    ];
 
-// THINKING MODE
-// export async function handleChatWithThinking(message: string) {
-//   const response = await ai.models.generateContent({
-//     model: "gemini-3.5-flash",
-//     contents: message,
-//     config: {
-//       thinkingConfig: {
-//         // thinkingBudget untuk pengaturan budget, tiap model beda, cek dokumentasi
-//         // thinkingBudget: 0, //tanpa thinking sama sekali
-//         // thinkingLevel: ThinkingLevel.MINIMAL,
-//         // untuk jenis thinking level bisa cek dokumentasi google gemini
-//         includeThoughts: true,
-//         // includeThoughts untuk buat ringkasan pemikiran, cara jalan pikiran
-//       },
-//     },
-//   });
-//   //   cara untuk tampilkan alur pemikiran
-//   const parts = response.candidates?.[0]?.content?.parts;
-//   if (!parts) {
-//     return;
-//   }
-//   const result = {
-//     thoughts: "",
-//     answer: "",
-//   };
-//   for (const part of parts) {
-//     if (!part.text) {
-//       continue;
-//     } else if (part.thought) {
-//       result.thoughts += part.text;
-//     } else {
-//       result.answer += part.text;
-//     }
-//   }
+    let running = true;
+    let iterate = 1;
+    while (running) {
+      iterate++;
+      console.log(`iterate: ${iterate}`);
+      console.log(contents);
+      const response = await ai.models.generateContentStream({
+        model: usedModels,
+        contents,
+        config: {
+          tools: [{ functionDeclarations: [getTransactionDeclaration] }],
+          thinkingConfig: {
+            includeThoughts: isThinking,
+          },
+        },
+      });
 
-//   return result;
-// }
-
-// STREAMING RESPONSE
-// PERSONALIZED STREAMING CHAT - RAG IMPLEMENTATION
-// retrieve embedding  = ngambil embedding
-export async function* handleChatStreaming(
-  conversation: Conversation[],
-  isThinking: boolean,
-  mode: "general" | "personalized",
-) {
-  let response;
-  if (mode === "general") {
-    response = await generalChat(conversation, isThinking);
-  } else {
-    response = await personalizedChat(
-      conversation[conversation.length - 1].parts[0].text,
-      conversation.slice(0, -1),
-      isThinking,
-    );
-  }
-  if (isThinking) {
-    for await (const chunk of response) {
-      // pecah part dan cek satu satu
-      const parts = chunk.candidates?.[0]?.content?.parts;
-      if (parts) {
-        // kalo ada maka cek satu satu
-        for (const part of parts) {
-          if (!part.text) {
-            continue;
-          } else if (part.thought) {
-            // karena yield cuman kirim teks aja, maka harus dikasih flagging supaya bisa dikirim sebagai though
-            yield `[thought]${part.text}`;
-          } else {
-            yield part.text;
+      const modelParts: Part[] = [];
+      const functionCalls: FunctionCall[] = [];
+      for await (const chunk of response) {
+        const parts = chunk.candidates?.[0]?.content?.parts || [];
+        if (parts) {
+          for (const part of parts) {
+            modelParts.push(part);
+            if (part.functionCall) {
+              functionCalls.push(part.functionCall);
+            } else if (part.text) {
+              if (part.thought) {
+                if (isThinking) yield `[thought]${part.text}`;
+              } else {
+                yield part.text;
+              }
+            }
           }
         }
       }
-    }
-  } else {
-    // pecah-pecah responsenya dengan konsep "chunk"
-    for await (const chunk of response) {
-      if (chunk.text) {
-        yield chunk.text;
-        // yield itu di javascript modelnya distop sementara dulu dan melanjutkan eksekusi, kalau return langsung diakhiri eksekusinya
+      if (functionCalls.length > 0) {
+        contents.push({ role: "model", parts: modelParts });
+        console.log(functionCalls);
+        const functionResponseParts = await Promise.all(
+          functionCalls.map(async (functionCall) => {
+            const { name, args, id } = functionCall;
+            if (!args) {
+              throw new Error("No arguments provided for action");
+            }
+            let resultData = {};
+            switch (name) {
+              case "get_transaction":
+                const dataFind = await findEmbedding(
+                  JSON.stringify(args),
+                  0.3,
+                  100,
+                );
+                resultData = dataFind[0] || [];
+                break;
+              default:
+                throw new Error("Unknown function call");
+            }
+            return {
+              functionResponse: {
+                name,
+                response: { result: resultData },
+                id,
+              },
+            };
+          }),
+        );
+        contents.push({
+          role: "user",
+          parts: functionResponseParts,
+        });
+      } else {
+        running = false;
       }
     }
   }
 }
-
-// //CARA OTOMASI RESPONS AI SAAT CRUD VIA CHATBOT
-
-// // buat dulu schema untuk validasi hasil AI nya
-// const transactionSchema = z.object({
-//   amount: z.number().default(0).describe("Transaction nominal"),
-//   // describe untuk mendeskripsikan amount itu buat apa
-//   type: z
-//     .enum(["income", "expense"], {
-//       error: "Type is required",
-//     })
-//     .describe("Type of transaction"),
-//   category: z
-//     .enum([
-//       "Education",
-//       "Food & Drink",
-//       "Transportation",
-//       "Entertainment",
-//       "Salary",
-//       "Others",
-//     ])
-//     .describe("Category of transaction"),
-//   // describe boleh pakai bahasa indonesia atau inggris menyesuaikan kebutuhan
-//   date: z.string().describe("the date of transaction in YYYY-MM-DD format"),
-//   description: z.string().describe("Short text for describing transaction"),
-// });
-// export async function handleWizardInput(message: string) {
-//   const contents = `${message}`;
-//   const response = await ai.models.generateContent({
-//     model: usedModels,
-//     // kalau mau modifikasi inputan user, maka pakai modifikasi contentsnya juga, berikut ini adalah contoh yang pakai XML karena lebih baik karena AI lebih tau
-//     // lebih baik define untuk instruksi pakai bahasa inggris, karena kalau pakai indonesia token lebih gede karena harus translate dulu
-//     // boleh di system instruction boleh di contents, contents ini ga ngemodifikasi conversation
-//     contents: `
-//     <role>
-//       You are an AI Wizard finance assistant, who can extract transaction details from text.
-//     </role>
-
-//     <instruction>
-//       Extract the transaction details from the following text and return it as a structured JSON object.
-//       The JSON object must have exactly these fields:
-//       - "amount": a number representing the cost  (positive). Use 0 if the amount is not provided
-//       - "type" : type of transaction, either 'income' or 'expense'.
-//       - "category": choose the most appropriate category from this exact list:
-//             "Education", "Food & Drink", "Transportation", "Entertainment", "Salary", "Others",
-//       - "description": a short string describing the transaction, first letter must be capitalized.
-//       - "date": date of transaction in YYYY-MM-DD format.
-//         Assume the current date if relative terms like 'today' or 'just now'. If the date is not define, use current date
-//     </instruction>
-
-//     <context>
-//       Current Date : ${new Date().toISOString()}
-//     </context>
-
-//     <input>
-//       Text to extract: ${contents}
-//     </input>
-
-//     <outputFormat>
-//       Respond with only the raw JSON object, NO MARKDOWN BLOCKS, NO TEXT BEFORE OR AFTER
-//     </outputFormat>
-//     `,
-//     config: {
-//       // tipe yang dihasilkan itu berupa json
-//       responseMimeType: "application/json",
-//       // memasukkan transactionschema ke responseSchema dengan z.toJSONSchema (merubah zod schema ke json)
-//       responseSchema: z.toJSONSchema(transactionSchema),
-//     },
-//   });
-
-//   const transaction = transactionSchema.parse(JSON.parse(`${response.text}`));
-
-//   if (transaction.amount <= 0) {
-//     throw new Error("Cannot create transaction with invalid amount");
-//   }
-
-//   return transaction;
-// }

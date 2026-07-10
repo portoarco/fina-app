@@ -62,12 +62,12 @@ const ChatbotDrawer = () => {
               parts: [
                 {
                   ...parts[0],
-                  text: chunk.startsWith("[thought]")
+                  text: chunk?.startsWith("[thought]")
                     ? parts[0].text + chunk.replace("[thought]", "")
                     : parts[0].text,
                 },
                 {
-                  text: !chunk.startsWith("[thought]")
+                  text: !chunk?.startsWith("[thought]")
                     ? parts[1].text + chunk
                     : parts[1].text,
                 },
