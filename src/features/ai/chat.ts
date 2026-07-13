@@ -5,7 +5,7 @@ import { Conversation } from "@/app/types/ai";
 import { usedModels } from "@/lib/utils";
 import { Content, FunctionCall, Part } from "@google/genai";
 import { findEmbedding } from "./embedding";
-import { getTransactionDeclaration } from "./functionTransaction";
+import { getTransactionDeclaration } from "./function-transaction";
 import { createAI } from "./instance";
 
 // define dulu ai nya
@@ -255,7 +255,21 @@ export async function* handleChatStreaming(
         model: usedModels,
         contents,
         config: {
-          tools: [{ functionDeclarations: [getTransactionDeclaration] }],
+          // gabungan dari tools dan function calling disini gabisa di 2.5 model gemini, hanya bisa di 3.5 flash
+          tools: [
+            {
+              // PAID only, kalau diluar paid, pasti gabisa dipakai yang googleSearch dan urlContext
+              // googleSearch: {},
+              // urlContext: {},
+              //
+              functionDeclarations: [getTransactionDeclaration],
+            },
+          ],
+          // PAID ONLY - Kalau gapake yang paid, maka hapus aja, karena gamungkin bisa - toolConfig ini harus dimasukkan kalo yang paid dan combine google search dan url context
+          // toolConfig: {
+          //   includeServerSideToolInvocations: true,
+          // },
+          //
           thinkingConfig: {
             includeThoughts: isThinking,
           },

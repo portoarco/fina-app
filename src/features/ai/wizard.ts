@@ -12,7 +12,7 @@ import {
   deleteTransactionDeclaration,
   getTransactionDeclaration,
   updateTransactionDeclaration,
-} from "./functionTransaction";
+} from "./function-transaction";
 import { createAI } from "./instance";
 import { Content } from "@google/genai";
 
