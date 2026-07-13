@@ -92,7 +92,7 @@ const ChatbotTextarea = ({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="general">General</SelectItem>
-              <SelectItem value="personal">Personal</SelectItem>
+              <SelectItem value="personalized">Personalized</SelectItem>
             </SelectContent>
           </Select>
         </div>

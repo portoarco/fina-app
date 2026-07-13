@@ -112,7 +112,7 @@ export async function handleWizardTools(message: string) {
       - Extract the transaction details from the following text. 
       - If request is to update or delete transaction, you must call function get_transaction first to find out which transaction will be updated or deleted.
       - When update transaction, args must return from get_transaction before with fully like in schema.
-      - The final response if there are no more functions being called is as simple as possible .
+      - The final response if there are no more functions being called is as simple as possible.
     </instruction>
 
     <context>

@@ -90,6 +90,7 @@ async function generalChat(conversation: Content[], isThinking: boolean) {
         // thinkingLevel: isThinking ? ThinkingLevel.HIGH : ThinkingLevel.MINIMAL,
         // thinkingBudget: isThinking ? -1 : 0,
       },
+      tools: [{ googleSearch: {}, urlContext: {} }], // google grounding search
       // tambahkan systemInstruction untuk prompter instruksi yang diberikan ke AI untuk merespons user
       systemInstruction: `
       [Role]
@@ -297,7 +298,7 @@ export async function* handleChatStreaming(
                   0.3,
                   100,
                 );
-                resultData = dataFind[0] || [];
+                resultData = dataFind || [];
                 break;
               default:
                 throw new Error("Unknown function call");
