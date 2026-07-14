@@ -3,16 +3,22 @@ import { ButtonGroup } from "@/components/ui/button-group";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { generateChart } from "@/features/ai/generative-content";
+import {
+  generateChart,
+  generateImage,
+  generateVideos,
+} from "@/features/ai/generative-content";
 import { cn, convertToIDR } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
 import {
   ChartPieIcon,
+  ImageIcon,
   Loader,
   Loader2Icon,
   Sparkles,
   SparklesIcon,
+  VideoIcon,
 } from "lucide-react";
 import { KeyboardEvent, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
@@ -29,6 +35,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import Image from "next/image";
 
 const formSchema = z.object({
   request: z.string().min(1, "Request is required"),
@@ -46,11 +53,22 @@ const GenerativeContent = () => {
   const [insightType, setInsightType] = useState<"chart" | "image" | "video">(
     "chart",
   );
-  const [result, setResult] = useState<{
-    type: "chart";
-    chartType: "bar" | "pie";
-    data: { name: string; value: number }[];
-  } | null>(null);
+  const [result, setResult] = useState<
+    | {
+        type: "chart";
+        chartType: "bar" | "pie";
+        data: { name: string; value: number }[];
+      }
+    | {
+        type: "image";
+        data: string;
+      }
+    | {
+        type: "video";
+        data: string;
+      }
+    | null
+  >(null);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -65,6 +83,18 @@ const GenerativeContent = () => {
         case "chart":
           const result = await generateChart(request);
           return { ...result, type: "chart" };
+        case "image":
+          const resultImage = await generateImage(request);
+          return {
+            type: "image",
+            data: resultImage,
+          };
+        case "video":
+          const resultVideo = await generateVideos(request);
+          return {
+            type: "video",
+            data: resultVideo,
+          };
         default:
           return null;
       }
@@ -113,6 +143,22 @@ const GenerativeContent = () => {
               >
                 <ChartPieIcon />
               </Button>
+              <Button
+                variant={insightType === "image" ? "default" : "secondary"}
+                type="button"
+                size={"icon"}
+                onClick={() => setInsightType("image")}
+              >
+                <ImageIcon />
+              </Button>
+              <Button
+                variant={insightType === "video" ? "default" : "secondary"}
+                type="button"
+                size={"icon"}
+                onClick={() => setInsightType("video")}
+              >
+                <VideoIcon />
+              </Button>
             </ButtonGroup>
             <div className="flex flex-row gap-2">
               <Controller
@@ -145,7 +191,7 @@ const GenerativeContent = () => {
           </form>
         </div>
       </CardHeader>
-      <CardContent className="h-75 ">
+      <CardContent className={cn(result?.type === "chart" && "h-75")}>
         {error && (
           <div className="text-sm text-destructive p-4 border border-destructive/50 bg-destructive/10 rounded-lg">
             {error.message}
@@ -159,7 +205,7 @@ const GenerativeContent = () => {
             )}
           >
             {isPending ? (
-              <div>
+              <div className="flex flex-col items-center">
                 <Loader2Icon className="size-8 animate-spin" />
                 <span>AI is generating insight</span>
               </div>
@@ -241,6 +287,29 @@ const GenerativeContent = () => {
                   </PieChart>
                 )}
               </ResponsiveContainer>
+            )}
+            {/* IMAGE AND VIDEO ONLY FOR PAID GEMINI! */}
+            {result.type === "image" && (
+              <div className="flex items-center">
+                <Image
+                  width={1920}
+                  height={1080}
+                  src={result.data}
+                  alt="generated-image"
+                  className="rounded-xl"
+                />
+              </div>
+            )}
+            {result.type === "video" && (
+              <div className="flex items-center">
+                <video
+                  src={result.data}
+                  controls
+                  className="rounded-xl w-full aspect-video "
+                >
+                  Your browser does not support
+                </video>
+              </div>
             )}
           </div>
         )}

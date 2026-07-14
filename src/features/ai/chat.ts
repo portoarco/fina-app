@@ -3,7 +3,13 @@
 import { Conversation } from "@/app/types/ai";
 
 import { usedModels } from "@/lib/utils";
-import { Content, FunctionCall, Part } from "@google/genai";
+import {
+  Content,
+  FunctionCall,
+  HarmBlockThreshold,
+  HarmCategory,
+  Part,
+} from "@google/genai";
 import { findEmbedding } from "./embedding";
 import { getTransactionDeclaration } from "./function-transaction";
 import { createAI } from "./instance";
@@ -273,6 +279,13 @@ export async function* handleChatStreaming(
           thinkingConfig: {
             includeThoughts: isThinking,
           },
+          safetySettings: [
+            {
+              category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+              threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+              // jenis category cek di safety settings category
+            },
+          ],
         },
       });
 
@@ -297,7 +310,7 @@ export async function* handleChatStreaming(
       }
       if (functionCalls.length > 0) {
         contents.push({ role: "model", parts: modelParts });
-        console.log(functionCalls);
+
         const functionResponseParts = await Promise.all(
           functionCalls.map(async (functionCall) => {
             const { name, args, id } = functionCall;
