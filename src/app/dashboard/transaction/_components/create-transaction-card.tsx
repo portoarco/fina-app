@@ -29,6 +29,8 @@ import { format } from "date-fns";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import z from "zod";
+import FileDropzoneInput from "../../_components/file-dropzone-input";
+import { CATEGORIES } from "@/constants/transaction-constant";
 
 const formSchema = z.object({
   amount: z.string().min(1, "Amount is required"),
@@ -80,6 +82,9 @@ const CreateTransactionCard = ({ refetch }: { refetch: () => void }) => {
         <CardDescription>Add a new financial activity</CardDescription>
       </CardHeader>
       <CardContent>
+        <div className="mb-6">
+          <FileDropzoneInput setValues={form.setValues} refetch={refetch} />
+        </div>
         <form onSubmit={form.handleSubmit(onSubmit)}>
           <FieldGroup className="gap-3">
             <Controller
@@ -132,19 +137,11 @@ const CreateTransactionCard = ({ refetch }: { refetch: () => void }) => {
                     <SelectTrigger id="form-category">
                       <SelectValue placeholder="Select Category" />
                       <SelectContent>
-                        <SelectItem value="Education">Education</SelectItem>
-                        <SelectItem value="Food & Drink">
-                          Food & Drink
-                        </SelectItem>
-                        <SelectItem value="Transportation">
-                          Transportation
-                        </SelectItem>
-                        <SelectItem value="Shopping">Shopping</SelectItem>
-                        <SelectItem value="Entertainment">
-                          Entertainment
-                        </SelectItem>
-                        <SelectItem value="Salary">Salary</SelectItem>
-                        <SelectItem value="Others">Others</SelectItem>
+                        {CATEGORIES.map((cat) => (
+                          <SelectItem key={`cat-${cat}`} value={cat}>
+                            {cat}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </SelectTrigger>
                   </Select>
@@ -193,11 +190,7 @@ const CreateTransactionCard = ({ refetch }: { refetch: () => void }) => {
                 </Field>
               )}
             />
-            <Button
-              size={"lg"}
-              type="submit"
-              disabled={!form.formState.isValid || isPending}
-            >
+            <Button size={"lg"} type="submit" disabled={isPending}>
               {isPending ? "Creating ..." : "Create Transaction"}
             </Button>
           </FieldGroup>

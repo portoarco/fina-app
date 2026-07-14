@@ -1,6 +1,6 @@
 "use server";
 import { usedModels } from "@/lib/utils";
-import z from "zod";
+import z, { mime } from "zod";
 import {
   createTransaction,
   deleteTransaction,
@@ -15,32 +15,14 @@ import {
 } from "./function-transaction";
 import { createAI } from "./instance";
 import { Content } from "@google/genai";
+import {
+  CATEGORIES,
+  transactionSchema,
+} from "@/constants/transaction-constant";
 
 //CARA OTOMASI RESPONS AI SAAT CRUD VIA CHATBOT
 const ai = createAI();
-// buat dulu schema untuk validasi hasil AI nya
-const transactionSchema = z.object({
-  amount: z.number().default(0).describe("Transaction nominal"),
-  // describe untuk mendeskripsikan amount itu buat apa
-  type: z
-    .enum(["income", "expense"], {
-      error: "Type is required",
-    })
-    .describe("Type of transaction"),
-  category: z
-    .enum([
-      "Education",
-      "Food & Drink",
-      "Transportation",
-      "Entertainment",
-      "Salary",
-      "Others",
-    ])
-    .describe("Category of transaction"),
-  // describe boleh pakai bahasa indonesia atau inggris menyesuaikan kebutuhan
-  date: z.string().describe("the date of transaction in YYYY-MM-DD format"),
-  description: z.string().describe("Short text for describing transaction"),
-});
+
 export async function handleWizardInput(message: string) {
   const contents = `${message}`;
   const response = await ai.models.generateContent({
@@ -59,7 +41,7 @@ export async function handleWizardInput(message: string) {
       - "amount": a number representing the cost  (positive). Use 0 if the amount is not provided
       - "type" : type of transaction, either 'income' or 'expense'. 
       - "category": choose the most appropriate category from this exact list: 
-            "Education", "Food & Drink", "Transportation", "Entertainment", "Salary", "Others",
+            ${CATEGORIES.join(",")}
       - "description": a short string describing the transaction, first letter must be capitalized. 
       - "date": date of transaction in YYYY-MM-DD format. 
         Assume the current date if relative terms like 'today' or 'just now'. If the date is not define, use current date
@@ -97,19 +79,42 @@ export async function handleWizardInput(message: string) {
 }
 
 // Note: Tiap fungsi yang didaftarkan di handleWizardTools harus ada, bila user memanggil tidak spesifik, maka dianggap unknown function call atau error
-export async function handleWizardTools(message: string) {
-  const contents: Content[] = [
-    {
-      role: "user",
-      parts: [
-        {
-          text: `
+export async function handleWizardTools(formData: FormData) {
+  const type = formData.get("type") as "audio" | "text";
+  const file = formData.get("file") as File;
+  const request = formData.get("request") as File;
+  if (type === "audio" && !file) {
+    throw new Error("No file uploaded");
+  }
+  let mimeType = "";
+  let base64Data = "";
+  if (type === "audio") {
+    mimeType = file.type;
+    base64Data = Buffer.from(await file.arrayBuffer()).toString("base64");
+  }
+  const contents: Content[] = [];
+  // const isText = !!content?.parts?.[0]?.text;
+  contents.push({
+    role: "user",
+    parts: [
+      ...(type === "audio"
+        ? [
+            {
+              inlineData: {
+                mimeType,
+                data: base64Data,
+              },
+            },
+          ]
+        : []),
+      {
+        text: `
     <role>
-      You are an AI Wizard finance assistant, who can extract transaction details from text.
+      You are an AI Wizard finance assistant, who can extract transaction details from ${type}.
     </role>
 
     <instruction>
-      - Extract the transaction details from the following text. 
+      - Extract the transaction details from ${type === "text" ? "the following text." : "the audio file"}
       - If request is to update or delete transaction, you must call function get_transaction first to find out which transaction will be updated or deleted.
       - When update transaction, args must return from get_transaction before with fully like in schema.
       - The final response if there are no more functions being called is as simple as possible.
@@ -119,14 +124,19 @@ export async function handleWizardTools(message: string) {
       Current Date : ${new Date().toISOString()}
     </context>
 
-    <input>
-      Text to extract: ${message} 
-    </input>
+    ${
+      type === "text" &&
+      `  <input>
+      Text to extract: ${request} 
+    </input>`
+    }
+
+  
     `,
-        },
-      ],
-    },
-  ];
+      },
+    ],
+  });
+
   let iterate = 1;
   let running = true; //nilai awal iterasi masih running dan call ai berkali-kali sampai tugasnya selesai
   // selama runing maka jalankan :
@@ -136,7 +146,7 @@ export async function handleWizardTools(message: string) {
     console.log(contents);
     iterate++;
     const response = await ai.models.generateContent({
-      model: usedModels,
+      model: "gemini-3.5-flash",
       contents,
       config: {
         tools: [
@@ -151,6 +161,7 @@ export async function handleWizardTools(message: string) {
         ],
       },
     });
+    console.log(response);
     if (response.functionCalls && response.functionCalls.length > 0) {
       // const functionCall = response.functionCalls[0];
       // const functionCall = response.functionCalls;

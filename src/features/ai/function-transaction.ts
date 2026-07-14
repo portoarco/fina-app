@@ -1,3 +1,4 @@
+import { CATEGORIES } from "@/constants/transaction-constant";
 import { FunctionDeclaration, Type } from "@google/genai";
 
 const transactionProperties = {
@@ -21,14 +22,7 @@ const transactionProperties = {
   },
   category: {
     type: Type.STRING,
-    enum: [
-      "Education",
-      "Food & Drink",
-      "Transportation",
-      "Entertainment",
-      "Salary",
-      "Others",
-    ],
+    enum: CATEGORIES,
     description: "Category of the transaction",
   },
   date: {
