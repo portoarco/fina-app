@@ -161,7 +161,7 @@ export async function handleWizardTools(formData: FormData) {
         ],
       },
     });
-    console.log(response);
+    console.log(response.usageMetadata);
     if (response.functionCalls && response.functionCalls.length > 0) {
       // const functionCall = response.functionCalls[0];
       // const functionCall = response.functionCalls;
